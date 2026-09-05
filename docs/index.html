@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Fluxo - Engenharia Mecatrônica</title>
+    <!-- Tailwind CSS para Estilização -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Plotly.js para o Gráfico de Sankey -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .slider-container { display: flex; align-items: center; gap: 1rem; }
+    </style>
+</head>
+<body class="p-6 text-gray-800">
+
+    <div class="max-w-7xl mx-auto space-y-6">
+
+        <!-- Cabeçalho -->
+        <header class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Simulador Estocástico de Fluxo (Ciclo Básico)</h1>
+                <p class="text-gray-500 mt-1">Engenharia Mecatrônica - Sistema Variante em Tempo Discreto</p>
+            </div>
+            <div class="text-right">
+                <span class="text-sm font-semibold text-gray-400 uppercase tracking-wide">Coorte Inicial</span>
+                <p class="text-2xl font-bold text-blue-600">1.000 Alunos</p>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+            <!-- Painel de Controle (Sidebar) -->
+            <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-gray-100 space-y-6">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        <!-- Ícone de Parâmetros -->
+                        <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                        Parâmetros
+                    </h2>
+
+                    <label for="failSlider" class="block text-sm font-medium text-gray-700 mb-2">
+                        Taxa de Reprovação (Gargalo)
+                    </label>
+                    <div class="slider-container mb-4">
+                        <input type="range" id="failSlider" min="0" max="95" step="0.5" value="32" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                        <span id="failValue" class="text-lg font-bold text-orange-500 w-16 text-right">32%</span>
+                    </div>
+
+                    <label for="dropSlider" class="block text-sm font-medium text-gray-700 mb-2 mt-4">
+                        Taxa de Evasão por Semestre
+                    </label>
+                    <div class="slider-container">
+                        <input type="range" id="dropSlider" min="0" max="30" step="0.5" value="2.5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-red-600">
+                        <span id="dropValue" class="text-lg font-bold text-red-500 w-16 text-right">2.5%</span>
+                    </div>
+
+                    <p class="text-xs text-gray-400 mt-4">
+                        Ajuste as probabilidades para simular o impacto nas retenções e formação ao longo de todos os 10 semestres da grade curricular.
+                    </p>
+                </div>
+
+                <hr class="border-gray-100">
+
+                <!-- Métricas Dinâmicas -->
+                <div class="space-y-4">
+                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">Projeção de Formatura</h3>
+
+                    <div class="bg-green-50 p-4 rounded-lg border border-green-100">
+                        <p class="text-sm text-green-800 font-medium">Engenheiros Formados (Fluxo Ideal)</p>
+                        <p class="text-3xl font-bold text-green-600" id="metricSuccess">0</p>
+                    </div>
+
+                    <div class="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                        <p class="text-sm text-orange-800 font-medium">Massa Retida (Acumulada)</p>
+                        <p class="text-3xl font-bold text-orange-600" id="metricRetained">0</p>
+                    </div>
+
+                    <div class="bg-red-50 p-4 rounded-lg border border-red-100">
+                        <p class="text-sm text-red-800 font-medium">Evasão Total</p>
+                        <p class="text-3xl font-bold text-red-600" id="metricDrop">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Área do Gráfico Sankey -->
+            <div class="lg:col-span-3 bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col">
+                <h2 class="text-lg font-bold text-gray-800 mb-4">Grafo de Dependências por Matéria (Mecatrônica)</h2>
+                <div id="sankeyPlot" class="w-full flex-grow min-h-[850px]"></div>
+            </div>
+
+        </div>
+
+        <!-- Visualização: Distribuição de Tempo -->
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mt-6">
+            <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <!-- Ícone de Tempo -->
+                <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                Distribuição do Tempo de Conclusão (Curva de Atraso Estocástico)
+            </h2>
+            <div id="timePlot" class="w-full h-[350px]"></div>
+            <p class="text-sm text-gray-500 mt-2 text-center">
+                O eixo X indica os anos cursados. O fluxo ideal é de <strong>5 anos (10 semestres)</strong>, indicado pela linha verde. O prazo máximo de permanência (jubilamento) é de <strong>8 anos (16 semestres)</strong>, indicado pela linha vermelha. Alunos à direita da linha vermelha seriam desligados nas regras da UnB.
+            </p>
+        </div>
+
+        <!-- Nova Visualização: Análise Comparativa (Dados Reais 2022) -->
+        <div class="bg-gray-50 p-8 rounded-xl shadow-inner border border-gray-200 mt-6">
+            <h2 class="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-300 pb-2">
+                <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                Análise Comparativa: Simulação vs. Dados Reais (Relatório DAI/UnB 2022)
+            </h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
+                <!-- Coluna 1: O Cenário Real -->
+                <div class="space-y-4">
+                    <h3 class="text-lg font-semibold text-gray-800">O Cenário Real (Eng. Mecatrônica)</h3>
+                    <p class="text-gray-600 text-sm leading-relaxed">
+                        De acordo com o relatório da <em>Diretoria de Avaliação e Informações Gerenciais (DAI) da UnB de 2022</em>, o curso de Engenharia Mecatrônica apresenta indicadores severos que corroboram com o modelo estocástico acima:
+                    </p>
+                    <ul class="space-y-3">
+                        <li class="flex items-start">
+                            <span class="flex-shrink-0 h-5 w-5 text-red-500 mr-2 mt-0.5"><svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg></span>
+                            <span class="text-sm text-gray-700"><strong>Tempo Médio até Formatura:</strong> O tempo médio real para a conclusão do curso foi de <strong>13,87 semestres (~7 anos)</strong>, com a mediana de 13 semestres. Isso significa que metade dos alunos formados levou quase o prazo máximo de jubilamento (16 semestres) para concluir os estudos.</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="flex-shrink-0 h-5 w-5 text-orange-500 mr-2 mt-0.5"><svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path></svg></span>
+                            <span class="text-sm text-gray-700"><strong>Tempo Médio até Evasão:</strong> O aluno que desiste (ou é desligado) passa em média <strong>8,98 semestres (~4,5 anos)</strong> sofrendo retenção antes de sair do sistema. É um custo financeiro e psicológico altíssimo para a instituição e para o aluno.</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Coluna 2: A Explicação Matemática -->
+                <div class="space-y-4">
+                    <h3 class="text-lg font-semibold text-gray-800">A Explicação do Modelo Estocástico</h3>
+                    <p class="text-gray-600 text-sm leading-relaxed">
+                        Ao ajustar o nosso simulador para refletir a realidade da UnB, os números começam a fazer sentido matematicamente:
+                    </p>
+                    <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-4 shadow-sm">
+                        <p class="text-sm text-indigo-900 mb-2">
+                            <strong>O Mito do "Formar no Tempo Ideal":</strong>
+                        </p>
+                        <p class="text-sm text-indigo-800">
+                            Para que 2/3 da turma (66%) se formasse rigorosamente no tempo ideal de 5 anos (10 semestres) em um sistema encadeado, a taxa média de reprovação por matéria não poderia ultrapassar irreais <strong>4%</strong>.
+                        </p>
+                    </div>
+
+                    <!-- Novo Bloco: O Efeito de Cadeias Longas -->
+                    <div class="bg-blue-50 border border-blue-100 rounded-lg p-4 shadow-sm">
+                        <p class="text-sm text-blue-900 mb-2 flex items-center gap-1">
+                            <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                            <strong>A Topologia da Grade (Cadeias Longas):</strong>
+                        </p>
+                        <p class="text-sm text-blue-800">
+                            A Engenharia Mecatrônica possui "Caminhos Críticos" extensos. Considere uma dependência estrita de <strong>7 matérias</strong> em sequência. O aluno precisa de 7 aprovações consecutivas para não atrasar sua formatura.<br><br>
+                            Com o nosso índice inicial de reprovação ajustado em <strong>32%</strong> (chance de aprovação de 68%), a probabilidade matemática de um aluno passar ileso por essa trilha é de apenas <strong>(0,68)⁷ &approx; 6,7%</strong>. <br><br>
+                            Como essas matérias não podem ser cursadas em paralelo, <strong>um único tropeço</strong> empurra irreversivelmente o final da fila para o próximo semestre. É a estrutura rígida da grade somada à probabilidade conjunta agindo como uma âncora no tempo de conclusão.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Configuração Inicial e Elementos DOM
+        const failSlider = document.getElementById('failSlider');
+        const displayFailValue = document.getElementById('failValue');
+
+        const dropSlider = document.getElementById('dropSlider');
+        const displayDropValue = document.getElementById('dropValue');
+
+        const plotDiv = document.getElementById('sankeyPlot');
+        const timePlotDiv = document.getElementById('timePlot');
+
+        // Elementos de Métrica
+        const metricSuccess = document.getElementById('metricSuccess');
+        const metricRetained = document.getElementById('metricRetained');
+        const metricDrop = document.getElementById('metricDrop');
+
+        // Valores de estado
+        let currentReprov = 32.0;
+        let currentEvasao = 2.5;
+
+        function calcularFluxo(taxaReprovacaoPerc, taxaEvasaoPerc) {
+            let taxaReprovacao = taxaReprovacaoPerc / 100;
+            let taxaEvasao = taxaEvasaoPerc / 100;
+            let taxaAprovacao = 1.0 - taxaReprovacao - taxaEvasao;
+
+            // Tratamento caso a soma dos sliders exceda 100%
+            if (taxaAprovacao < 0) {
+                let fator = taxaReprovacao / (taxaReprovacao + taxaEvasao);
+                taxaReprovacao = fator;
+                taxaEvasao = 1 - fator;
+                taxaAprovacao = 0;
+            }
+
+            const fluxos = { sources: [], targets: [], values: [] };
+            let nodeInputs = new Array(35).fill(0); // Total de 35 Nós
+
+            // Injeção de matrículas iniciais (1000 alunos base divididos em 6 trilhas paralelas iniciais)
+            const roots = [1, 5, 12, 17, 23, 30];
+            roots.forEach(target => {
+                fluxos.sources.push(0); // Nó 0 é a Entrada Geral
+                fluxos.targets.push(target);
+                fluxos.values.push(1000);
+                nodeInputs[target] = 1000;
+            });
+
+            // Dicionário de pré-requisitos: Key (Origem) -> Value Array (Destinos Destrancados)
+            const nextNodes = {
+                1: [2], 2: [3], 3: [4], 4: [32], // Trilha Matemática -> 32 (Formados)
+                5: [6], 6: [7], 7: [8], 8: [9], 9: [10], 10: [11], 11: [32], // Trilha Física e Elétrica
+                12: [13, 14, 15], 13: [32], 14: [32], 15: [16], 16: [32], // Trilha Computação (APC destranca 3)
+                17: [18], 18: [19], 19: [20], 20: [21], 21: [22], 22: [32], // Trilha Mecânica/Materiais
+                23: [24], 24: [25, 27], 25: [26], 26: [32], 27: [28], 28: [29], 29: [32], // Trilha Controle
+                30: [31], 31: [32] // Trilha Fís. Experimental
+            };
+
+            let sucessoTotal = 0;
+            let retencaoTotal = 0;
+            let evasaoTotal = 0;
+
+            // Como os IDs dos nós (1 a 31) já respeitam a ordem sequencial dos semestres,
+            // podemos varrer em um loop simples garantindo o fluxo causal (DAG)
+            for (let i = 1; i <= 31; i++) {
+                let input = nodeInputs[i];
+                if (input === 0) continue;
+
+                let aprovados = input * taxaAprovacao;
+                let reprovados = input * taxaReprovacao;
+                let evadidos = input * taxaEvasao;
+
+                // Direcionar Reprovados para o Gargalo
+                if(reprovados > 0) {
+                    fluxos.sources.push(i);
+                    fluxos.targets.push(33); // 33 = Retidos
+                    fluxos.values.push(reprovados);
+                    retencaoTotal += reprovados;
+                }
+
+                // Direcionar Evasão
+                if(evadidos > 0) {
+                    fluxos.sources.push(i);
+                    fluxos.targets.push(34); // 34 = Evadidos
+                    fluxos.values.push(evadidos);
+                    evasaoTotal += evadidos;
+                }
+
+                // Direcionar Aprovados para Próximas Matérias
+                if(aprovados > 0) {
+                    let targetsList = nextNodes[i] || [32];
+
+                    // Se uma matéria destranca 2, dividimos o "esforço/fluxo" pela metade
+                    // para manter a lei de conservação de massa estritamente correta no Sankey.
+                    let splitVal = aprovados / targetsList.length;
+
+                    targetsList.forEach(t => {
+                        fluxos.sources.push(i);
+                        fluxos.targets.push(t);
+                        fluxos.values.push(splitVal);
+
+                        if (t === 32) {
+                            sucessoTotal += splitVal;
+                        } else {
+                            nodeInputs[t] += splitVal;
+                        }
+                    });
+                }
+            }
+
+            // Ao final, dividimos as massas por 6 (número de trilhas) para
+            // reconverter a soma de matrículas no número base original de 1000 Alunos.
+            return {
+                fluxos,
+                sucessoAcumulado: sucessoTotal / 6,
+                retencaoAcumulada: retencaoTotal / 6,
+                evasaoAcumulada: evasaoTotal / 6
+            };
+        }
+
+        function renderizarSankey(taxaReprovacaoPerc, taxaEvasaoPerc) {
+            const resultados = calcularFluxo(taxaReprovacaoPerc, taxaEvasaoPerc);
+
+            displayFailValue.innerText = `${taxaReprovacaoPerc}%`;
+            displayDropValue.innerText = `${taxaEvasaoPerc}%`;
+
+            metricSuccess.innerText = `${Math.round(resultados.sucessoAcumulado).toLocaleString('pt-BR')} / 1.000`;
+            metricRetained.innerText = `${Math.round(resultados.retencaoAcumulada).toLocaleString('pt-BR')} / 1.000`;
+            metricDrop.innerText = `${Math.round(resultados.evasaoAcumulada).toLocaleString('pt-BR')} / 1.000`;
+
+            const data = [{
+                type: "sankey",
+                orientation: "h",
+                node: {
+                    pad: 12,
+                    thickness: 15,
+                    line: { color: "#e5e7eb", width: 1 },
+                    label: [
+                        "Entrada UnB", // 0
+                        "Cálculo 1", "Cálculo 2", "Cálculo 3", "Mec. dos Materiais", // 1-4
+                        "Física 1", "Física 2", "Física 3", "Circ. Elétricos", "Eletrônica", "Conv. de Energia", "Lab. de Conversão", // 5-11
+                        "APC", "Org. Arq. Comp", "Sist. Digitais", "Estruturas de Dados", "Sist. Eventos Discretos", // 12-16
+                        "Álgebra Linear", "Estática", "Dinâmica", "Ciência dos Materiais", "Tec. Fabricação", "Transf. Calor", // 17-22
+                        "Introd. Mecatrônica", "Sinais Cont.", "Sinais Disc.", "Espaço de Estados", "Controle Clássico", "Lab. Controle", "Proj. Máquinas", // 23-29
+                        "Física 1 Exp.", "Física 2 Exp.", // 30-31
+                        "Engenheiros Formados", // 32
+                        "Retidos (Acumulado)", // 33
+                        "Evadidos (Fora)" // 34
+                    ],
+                    color: [
+                        "#9ca3af", // 0
+                        ...Array(4).fill("#3b82f6"), // 1-4 Matemática (Azul)
+                        ...Array(7).fill("#f97316"), // 5-11 Física/Elétrica (Laranja)
+                        ...Array(5).fill("#10b981"), // 12-16 Computação (Verde)
+                        ...Array(6).fill("#8b5cf6"), // 17-22 Mecânica (Roxo)
+                        ...Array(7).fill("#ec4899"), // 23-29 Controle (Rosa)
+                        ...Array(2).fill("#eab308"), // 30-31 Física Experimental (Amarelo)
+                        "#14b8a6", // 32 Formados (Ciano)
+                        "#64748b", // 33 Retidos (Cinza)
+                        "#ef4444"  // 34 Evadidos (Vermelho)
+                    ]
+                },
+                link: {
+                    source: resultados.fluxos.sources,
+                    target: resultados.fluxos.targets,
+                    value: resultados.fluxos.values,
+                    color: "rgba(209, 213, 219, 0.4)"
+                }
+            }];
+
+            const layout = {
+                font: { size: 10, family: 'Inter, sans-serif' },
+                margin: { l: 5, r: 5, t: 10, b: 10 },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)'
+            };
+
+            Plotly.react(plotDiv, data, layout, {displayModeBar: false});
+
+            renderizarDistribuicaoTempo(taxaReprovacaoPerc, taxaEvasaoPerc);
+        }
+
+        function calcularTempoConclusao(taxaReprovacaoPerc, taxaEvasaoPerc) {
+            let p_fail = taxaReprovacaoPerc / 100;
+            let p_drop = taxaEvasaoPerc / 100;
+            let p_pass = 1.0 - p_fail - p_drop;
+
+            // Tratamento caso a soma supere 100%
+            if (p_pass <= 0) {
+                return new Array(40).fill(0);
+            }
+
+            const maxSemestres = 40; // Janela de observação de 20 anos
+            // Vetor de Estado Macroscópico: Representa em que "semestre cronológico" o aluno está empacado
+            let estados = new Array(10).fill(0);
+            estados[0] = 1000; // Todos os 1000 alunos começam o 1º semestre de progresso
+
+            let graduadosPorSemestre = new Array(maxSemestres).fill(0);
+
+            // Simulação de transição de estados através das rodadas (semestres)
+            for (let t = 0; t < maxSemestres; t++) {
+                // Alunos que venceram as 10 barreiras se formam na etapa atual (t)
+                graduadosPorSemestre[t] = estados[9] * p_pass;
+
+                let novosEstados = new Array(10).fill(0);
+
+                // Calcula de trás pra frente (varredura inversa) para não mover o mesmo aluno 2x na mesma rodada
+                for (let i = 9; i >= 0; i--) {
+                    // Reprovados estacionam e ficam retidos no mesmo nível para a próxima rodada
+                    novosEstados[i] += estados[i] * p_fail;
+
+                    // Aprovados avançam para o próximo nível lógico da grade
+                    if (i < 9) {
+                        novosEstados[i + 1] += estados[i] * p_pass;
+                    }
+                }
+                estados = novosEstados;
+            }
+
+            return graduadosPorSemestre;
+        }
+
+        function renderizarDistribuicaoTempo(taxaReprovacaoPerc, taxaEvasaoPerc) {
+            const dadosTempo = calcularTempoConclusao(taxaReprovacaoPerc, taxaEvasaoPerc);
+            const semestres = Array.from({length: 40}, (_, i) => i + 1); // 1 a 40
+            const anos = semestres.map(s => s / 2); // Conversão para anos
+
+            // CONVERSÃO PARA PORCENTAGEM: O array 'dadosTempo' contém números absolutos
+            // Se começamos com 1000 alunos no estado inicial, a porcentagem é (valor / 10)
+            const dadosTempoPerc = dadosTempo.map(v => v / 10);
+
+            const trace = {
+                x: anos,
+                y: dadosTempoPerc, // Usando o array de porcentagem
+                type: 'bar',
+                customdata: semestres,
+                marker: {
+                    color: anos.map(a => a === 5 ? '#10b981' : (a < 5 ? '#d1d5db' : '#8b5cf6')),
+                    line: { width: 0 },
+                    opacity: 0.9
+                },
+                // Atualizado o hover para mostrar % da coorte
+                hovertemplate: '<b>Duração: %{x} anos (%{customdata} semestres)</b><br>Alunos formados: %{y:.1f}% da coorte<extra></extra>'
+            };
+
+            const layout = {
+                font: { family: 'Inter, sans-serif' },
+                xaxis: {
+                    title: 'Tempo total cursado para formatura (Anos)',
+                    tickmode: 'linear',
+                    dtick: 1,
+                    range: [3.5, 18]
+                },
+                yaxis: {
+                    title: '% da Coorte Inicial Graduada', // Titulo atualizado
+                    gridcolor: '#f3f4f6',
+                    ticksuffix: '%' // Sufixo automático no eixo Y
+                },
+                margin: { l: 50, r: 20, t: 70, b: 40 }, // Topo ajustado para 70
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                shapes: [
+                    {
+                        type: 'line',
+                        x0: 5,
+                        y0: 0,
+                        x1: 5,
+                        y1: 1,
+                        yref: 'paper',
+                        line: {
+                            color: '#10b981',
+                            width: 2,
+                            dash: 'dot'
+                        }
+                    },
+                    {
+                        type: 'line',
+                        x0: 8,
+                        y0: 0,
+                        x1: 8,
+                        y1: 1,
+                        yref: 'paper',
+                        line: {
+                            color: '#ef4444',
+                            width: 2,
+                            dash: 'dash'
+                        }
+                    }
+                ],
+                annotations: [
+                    {
+                        x: 5,
+                        y: 1.12,
+                        yref: 'paper',
+                        text: 'Tempo Ideal (5 Anos)',
+                        showarrow: false,
+                        font: {
+                            color: '#10b981',
+                            size: 13,
+                            weight: 'bold'
+                        }
+                    },
+                    {
+                        x: 8,
+                        y: 1.12,
+                        yref: 'paper',
+                        text: 'Tempo Máximo (8 Anos)',
+                        showarrow: false,
+                        font: {
+                            color: '#ef4444',
+                            size: 13,
+                            weight: 'bold'
+                        }
+                    }
+                ]
+            };
+
+            Plotly.react(timePlotDiv, [trace], layout, {displayModeBar: false});
+        }
+
+        failSlider.addEventListener('input', (e) => {
+            currentReprov = parseFloat(e.target.value);
+            renderizarSankey(currentReprov, currentEvasao);
+        });
+
+        dropSlider.addEventListener('input', (e) => {
+            currentEvasao = parseFloat(e.target.value);
+            renderizarSankey(currentReprov, currentEvasao);
+        });
+
+        // Inicialização
+        renderizarSankey(currentReprov, currentEvasao);
+
+        // Redimensionamento
+        window.addEventListener('resize', () => {
+            Plotly.Plots.resize(plotDiv);
+            Plotly.Plots.resize(timePlotDiv);
+        });
+
+    </script>
+</body>
+</html>

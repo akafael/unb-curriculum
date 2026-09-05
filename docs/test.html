@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Framework Modular de Fluxo Acadêmico</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+</head>
+<body class="bg-gray-100 p-6 font-sans">
+
+<div class="max-w-6xl mx-auto">
+    <!-- Cabeçalho e Seleção de Curso -->
+    <div class="bg-white p-6 rounded-lg shadow-md mb-6 flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-800" id="course-title">Simulador Modular</h1>
+            <p class="text-gray-600 mt-1" id="course-meta">Carregando dados estruturais...</p>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Selecionar Curso (Input JSON):</label>
+            <select id="course-selector" class="border border-gray-300 rounded p-2 bg-gray-50 text-gray-800">
+                <option value="mecatronica">Engenharia Mecatrônica (10 Semestres)</option>
+                <option value="computacao">Ciência da Computação (8 Semestres)</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Painel de Controles -->
+    <div class="bg-white p-6 rounded-lg shadow-md mb-6 border border-gray-200">
+        <h2 class="text-lg font-bold mb-4">⚙️ Parâmetros Estocásticos</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Taxa de Reprovação Média (%)</label>
+                <input type="range" id="slider-reprovacao" min="0" max="80" step="1" value="32" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-2">
+                <p class="text-right text-sm font-bold text-red-600 mt-1" id="val-reprovacao">32%</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Taxa de Evasão por Semestre (%)</label>
+                <input type="range" id="slider-evasao" min="0" max="15" step="0.5" value="2.5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-2">
+                <p class="text-right text-sm font-bold text-orange-600 mt-1" id="val-evasao">2.5%</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Métricas -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div class="p-4 bg-white rounded-lg shadow-md border-l-4 border-green-500">
+            <h3 class="text-gray-500 text-sm font-semibold" id="label-ideal">Formados no Tempo Ideal</h3>
+            <p class="text-2xl font-bold text-gray-800" id="metric-grad">0 / 1.000</p>
+        </div>
+        <div class="p-4 bg-white rounded-lg shadow-md border-l-4 border-orange-500">
+            <h3 class="text-gray-500 text-sm font-semibold">Massa Represada (Gargalo)</h3>
+            <p class="text-2xl font-bold text-gray-800" id="metric-ret">0 / 1.000</p>
+        </div>
+        <div class="p-4 bg-white rounded-lg shadow-md border-l-4 border-red-500">
+            <h3 class="text-gray-500 text-sm font-semibold">Evasão Acumulada</h3>
+            <p class="text-2xl font-bold text-gray-800" id="metric-evad">0 / 1.000</p>
+        </div>
+    </div>
+
+    <!-- Gráficos -->
+    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+        <h2 class="text-xl font-bold mb-2">Diagrama de Fluxo (Sankey Macroscópico)</h2>
+        <div id="sankey-chart" class="w-full min-h-[400px]"></div>
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md">
+        <h2 class="text-xl font-bold mb-2">Distribuição de Tempo de Conclusão</h2>
+        <div id="histogram-chart" class="w-full min-h-[400px]"></div>
+    </div>
+</div>
+
+<script>
+// ==========================================
+// 1. DATA HANDLERS (Mock JSON Inputs)
+// ==========================================
+// Em um sistema real, isso viria de uma API ou upload de arquivo.
+const COURSES_JSON = {
+    "mecatronica": {
+        "name": "Engenharia Mecatrônica",
+        "institution": "UnB",
+        "subjects": [
+            // Simulação de cadeia longa: Calc 1 -> Calc 2 -> Calc 3 -> Mecânica -> Controle -> Projeto
+            { "id": "MAT1", "name": "Cálculo 1", "semester": 1, "prereqs": [] },
+            { "id": "MAT2", "name": "Cálculo 2", "semester": 2, "prereqs": ["MAT1"] },
+            { "id": "MAT3", "name": "Cálculo 3", "semester": 3, "prereqs": ["MAT2"] },
+            { "id": "MEC1", "name": "Mecânica", "semester": 4, "prereqs": ["MAT3"] },
+            { "id": "CTRL", "name": "Controle Clássico", "semester": 5, "prereqs": ["MEC1"] },
+            { "id": "PROJ", "name": "Projeto de Máquinas", "semester": 6, "prereqs": ["CTRL"] },
+            { "id": "TCC", "name": "TCC", "semester": 10, "prereqs": ["PROJ"] }
+            // O parser identificará que o curso tem 10 semestres e um caminho crítico pesado.
+        ]
+    },
+    "computacao": {
+        "name": "Ciência da Computação",
+        "institution": "UnB",
+        "subjects": [
+            // Estrutura mais modular (8 semestres), menos cadeias dependentes
+            { "id": "APC", "name": "Algoritmos", "semester": 1, "prereqs": [] },
+            { "id": "ED", "name": "Estruturas de Dados", "semester": 2, "prereqs": ["APC"] },
+            { "id": "BD", "name": "Bancos de Dados", "semester": 3, "prereqs": ["ED"] },
+            { "id": "TCC", "name": "TCC", "semester": 8, "prereqs": [] }
+        ]
+    }
+};
+
+// ==========================================
+// 2. COURSE PARSER MODULE
+// ==========================================
+class CourseParser {
+    constructor(courseJson) {
+        this.data = courseJson;
+        this.numSemesters = this._calculateNumSemesters();
+        this.maxSemesters = Math.ceil(this.numSemesters * 1.5); // Regra típica do MEC (1.5x)
+        this.criticalPathLength = this._calculateCriticalPath();
+    }
+
+    _calculateNumSemesters() {
+        return Math.max(...this.data.subjects.map(s => s.semester));
+    }
+
+    // Calcula o Caminho Crítico (Maior cadeia de dependências em série)
+    _calculateCriticalPath() {
+        let adjList = {};
+        this.data.subjects.forEach(s => adjList[s.id] = []);
+        this.data.subjects.forEach(s => {
+            s.prereqs.forEach(pre => { if(adjList[pre]) adjList[pre].push(s.id); });
+        });
+
+        let memo = {};
+        const dfs = (node) => {
+            if (memo[node]) return memo[node];
+            let maxPath = 0;
+            adjList[node].forEach(neighbor => {
+                maxPath = Math.max(maxPath, dfs(neighbor));
+            });
+            memo[node] = maxPath + 1;
+            return memo[node];
+        };
+
+        let globalMax = 0;
+        Object.keys(adjList).forEach(node => {
+            globalMax = Math.max(globalMax, dfs(node));
+        });
+        return globalMax;
+    }
+
+    // Calcula um multiplicador de dificuldade baseado na rigidez da grade
+    getRigidityMultiplier() {
+        // Ex: Se o caminho crítico for 7 matérias em 10 semestres = muito rígido.
+        let ratio = this.criticalPathLength / this.numSemesters;
+        return 1.0 + (ratio * 0.2); // Aumenta a reprovação efetiva em até 20%
+    }
+}
+
+// ==========================================
+// 3. SIMULATION ENGINE MODULE
+// ==========================================
+class SimulationEngine {
+    constructor(courseParser) {
+        this.course = courseParser;
+        this.cohortSize = 1000;
+    }
+
+    run(p_reprov, p_evasao) {
+        const N = this.course.numSemesters;
+        const maxTime = this.course.maxSemesters + 5; // Simular um pouco além do jubilamento para a cauda longa
+
+        // Ajusta as taxas com base na topologia do curso processada pelo JSON
+        let effective_reprov = Math.min((p_reprov / 100) * this.course.getRigidityMultiplier(), 0.99);
+        let evade_rate = p_evasao / 100;
+        let pass_rate = 1.0 - effective_reprov - evade_rate;
+
+        // Estruturas de dados para os gráficos
+        let sankeyLinks = { source: [], target: [], value: [] };
+        let graduationHistogram = new Array(maxTime + 1).fill(0);
+
+        // Estado inicial: Todos os 1000 alunos precisam passar em N semestres (estão no estado 0)
+        let state = new Array(N + 1).fill(0);
+        state[0] = this.cohortSize;
+
+        let totalEvaded = 0;
+        let cumulativeRetentions = 0; // Para o nó Sink de retenção macro no Sankey
+
+        // Simulação de Cadeia de Markov (Tempo discreto)
+        for (let t = 1; t <= maxTime; t++) {
+            let nextState = new Array(N + 1).fill(0);
+
+            for (let i = 0; i < N; i++) {
+                if (state[i] > 0) {
+                    let passing = state[i] * pass_rate;
+                    let failing = state[i] * effective_reprov;
+                    let evading = state[i] * evade_rate;
+
+                    nextState[i + 1] += passing;
+                    nextState[i] += failing; // Ficam retidos no mesmo nível de progresso
+                    totalEvaded += evading;
+                    cumulativeRetentions += failing;
+
+                    // Registro no Sankey (Apenas primeiros passos para não sobrecarregar visualmente)
+                    if (t <= N) {
+                        sankeyLinks.source.push(i);
+                        sankeyLinks.target.push(i + 1);
+                        sankeyLinks.value.push(passing);
+
+                        sankeyLinks.source.push(i);
+                        sankeyLinks.target.push(N + 1); // Nó global de Evasão
+                        sankeyLinks.value.push(evading);
+
+                        sankeyLinks.source.push(i);
+                        sankeyLinks.target.push(N + 2); // Nó global de Retenção
+                        sankeyLinks.value.push(failing);
+                    }
+                }
+            }
+            // Os que se formam neste tempo 't' exato:
+            graduationHistogram[t] = nextState[N];
+            nextState[N] = 0; // Removemos do sistema pois já graduaram
+
+            state = nextState;
+        }
+
+        // Métricas calculadas
+        let graduatedIdeal = graduationHistogram[N] || 0;
+
+        return {
+            sankey: sankeyLinks,
+            histogram: graduationHistogram,
+            metrics: {
+                ideal: graduatedIdeal,
+                retained: cumulativeRetentions,
+                evaded: totalEvaded
+            }
+        };
+    }
+}
+
+// ==========================================
+// 4. CHART MANAGER MODULE (Plotly Wrappers)
+// ==========================================
+class ChartManager {
+    static drawSankey(containerId, course, links) {
+        const N = course.numSemesters;
+        let labels = [];
+        let colors = [];
+
+        // Gera N nós de semestres dinamicamente
+        for (let i = 1; i <= N; i++) {
+            labels.push(`${i}º Sem`);
+            colors.push("#2196f3");
+        }
+        labels.push("Formados"); colors.push("#4caf50"); // Índice N
+        labels.push("Evasão"); colors.push("#f44336");   // Índice N+1
+        labels.push("Retidos"); colors.push("#ff9800");  // Índice N+2
+
+        const data = [{
+            type: "sankey",
+            orientation: "h",
+            node: { pad: 15, thickness: 20, line: { color: "black", width: 0.5 }, label: labels, color: colors },
+            link: { source: links.source, target: links.target, value: links.value, color: "rgba(200,200,200,0.3)" }
+        }];
+
+        Plotly.newPlot(containerId, data, { margin: { l: 10, r: 10, t: 10, b: 10 } }, {responsive: true});
+    }
+
+    static drawHistogram(containerId, course, distribution) {
+        const xValues = distribution.map((_, i) => i / 2); // Convertendo semestres para Anos
+        const yValues = distribution.map(v => (v / 1000) * 100); // Em Porcentagem
+
+        const maxIdealYears = course.numSemesters / 2;
+        const maxAllowedYears = course.maxSemesters / 2;
+
+        const data = [{
+            x: xValues.slice(1),
+            y: yValues.slice(1),
+            type: 'bar',
+            marker: {
+                color: xValues.slice(1).map(x => x <= maxIdealYears ? '#4caf50' : (x > maxAllowedYears ? '#b71c1c' : '#2196f3'))
+            },
+            hovertemplate: '%{y:.1f}% dos alunos<br>Tempo: %{x} Anos<extra></extra>'
+        }];
+
+        const layout = {
+            margin: { t: 50, b: 40, l: 40, r: 20 },
+            xaxis: { title: 'Tempo até Formatura (Anos)' },
+            yaxis: { title: '% do Grupo Inicial' },
+            shapes: [
+                { type: 'line', x0: maxIdealYears, x1: maxIdealYears, y0: 0, y1: 1, yref: 'paper', line: { color: 'green', width: 2, dash: 'dot' } },
+                { type: 'line', x0: maxAllowedYears, x1: maxAllowedYears, y0: 0, y1: 1, yref: 'paper', line: { color: 'red', width: 2, dash: 'dot' } }
+            ],
+            annotations: [
+                { x: maxIdealYears, y: 1.05, yref: 'paper', text: `Tempo Ideal (${maxIdealYears} Anos)`, showarrow: false, font: {color: 'green'} },
+                { x: maxAllowedYears, y: 1.05, yref: 'paper', text: `Jubilamento (${maxAllowedYears} Anos)`, showarrow: false, font: {color: 'red'} }
+            ]
+        };
+
+        Plotly.newPlot(containerId, data, layout, {responsive: true});
+    }
+}
+
+// ==========================================
+// 5. APP CONTROLLER
+// ==========================================
+class AppController {
+    constructor() {
+        this.bindEvents();
+        this.loadCourse('mecatronica'); // Carrega o curso padrão na inicialização
+    }
+
+    bindEvents() {
+        document.getElementById('course-selector').addEventListener('change', (e) => this.loadCourse(e.target.value));
+        document.getElementById('slider-reprovacao').addEventListener('input', (e) => this.updateUI(e.target.value, 'reprovacao'));
+        document.getElementById('slider-evasao').addEventListener('input', (e) => this.updateUI(e.target.value, 'evasao'));
+    }
+
+    loadCourse(courseKey) {
+        // Pega o JSON correspondente
+        const rawJson = COURSES_JSON[courseKey];
+
+        // Instancia o Parser com o novo JSON
+        this.currentCourse = new CourseParser(rawJson);
+        this.engine = new SimulationEngine(this.currentCourse);
+
+        // Atualiza cabeçalhos
+        document.getElementById('course-title').innerText = this.currentCourse.data.name;
+        document.getElementById('course-meta').innerText = `${this.currentCourse.numSemesters} Semestres Normais | Teto de ${this.currentCourse.maxSemesters} | Rigidez: ${this.currentCourse.criticalPathLength} matérias em série.`;
+        document.getElementById('label-ideal').innerText = `Formados no Tempo Ideal (${this.currentCourse.numSemesters / 2} Anos)`;
+
+        this.triggerSimulation();
+    }
+
+    updateUI(value, type) {
+        if (type === 'reprovacao') document.getElementById('val-reprovacao').innerText = `${value}%`;
+        if (type === 'evasao') document.getElementById('val-evasao').innerText = `${value}%`;
+        this.triggerSimulation();
+    }
+
+    triggerSimulation() {
+        const p_rep = parseFloat(document.getElementById('slider-reprovacao').value);
+        const p_eva = parseFloat(document.getElementById('slider-evasao').value);
+
+        // Roda a matemática
+        const results = this.engine.run(p_rep, p_eva);
+
+        // Atualiza Métricas
+        document.getElementById('metric-grad').innerText = `${results.metrics.ideal.toFixed(0)} / 1.000`;
+        document.getElementById('metric-ret').innerText = `${results.metrics.retained.toFixed(0)}* / 1.000`;
+        document.getElementById('metric-evad').innerText = `${results.metrics.evaded.toFixed(0)} / 1.000`;
+
+        // Renderiza Gráficos
+        ChartManager.drawSankey('sankey-chart', this.currentCourse, results.sankey);
+        ChartManager.drawHistogram('histogram-chart', this.currentCourse, results.histogram);
+    }
+}
+
+// Inicializa a aplicação
+const app = new AppController();
+
+</script>
+</body>
+</html>
