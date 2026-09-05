@@ -1,0 +1,1 @@
+jQuery(document).ready(function(jQuery){let url_cookie=document.getElementById("cookie_bar").value;if(localStorage.getItem('unb-cookies-'+url_cookie)!='1'){jQuery('.cookie_bar').fadeIn();jQuery('.cookie_bar a:first-child').focus();}jQuery('body').on('click','.cookie_bar button',function(){localStorage.setItem('unb-cookies-'+url_cookie,'1');jQuery('.cookie_bar').fadeOut();});});
