@@ -1,21 +1,10 @@
-# Python Project Template
+# Estudo curriculo cursos de graduação da UnB
 
-Python3 project template based on makefile.
+Análise da dinâmica de distribuição dos alunos nas disciplinas a partir da estrura curricular de cada curso de graduação.
 
-## Requirements
 
-* virtualenv
-* python3
-* make
+## Objetivos
 
-## Helper commands
-
-Print help with description of all roles defined in the [Makefile](./Makefile)
-```bash
-make help
-```
-
-Run tests
-```bash
-make test
-```
+* Avaliar a influência da estrutura e tamanho da árvore de dependências das disciplinas em relação a distribuição do tempo de pemanência.
+* Identificar gargalos principais
+* Verificar a distribuição do alunos por semestre de entrada em cada disciplina
